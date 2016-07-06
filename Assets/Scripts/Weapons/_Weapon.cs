@@ -3,13 +3,7 @@ using System.Collections;
 
 public class _Weapon : MonoBehaviour {
 
-	// Use this for initialization
-	void Start () {
-	
-	}
-	
-	// Update is called once per frame
-	void Update () {
-	
-	}
+	[System.NonSerialized]
+	public Vector3 target;
+
 }
