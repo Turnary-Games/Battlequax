@@ -4,60 +4,76 @@ using UnityEngine.EventSystems;
 using System.Collections;
 using System.Collections.Generic;
 
+[RequireComponent(typeof(Rigidbody))]
 public class ShipController : MonoBehaviour {
 
-	public Vector3 cameraEuler = new Vector3(45, 90, 0);
-	public float cameraDist = 10;
-	public float cameraMinDist = 3;
-	public float cameraMaxDist = 25;
+	[Header("Camera")]
+	public VirtualJoystick cameraJoystick;
+	private Vector3 cameraEuler = new Vector3(10, 0, 0);
+	public float cameraZoom = 10;
+	public float cameraMinZoom = 3;
+	public float cameraMaxZoom = 25;
 	public Vector3 cameraOffset = Vector3.up * 3;
+	public float cameraSpeed = 3;
+	public float targetExtraDistance = 10f;
 
+	[Header("Movement")]
+	public VirtualWheel wheel;
+	public VirtualThrottle throttle;
+
+	private Rigidbody body;
 	private List<_Weapon> weapons;
-
-	private Vector3 mousePos;
-	private Vector3 mouseDelta;
+	private List<ShipEngine> engines;
 
 	void Awake () {
 		weapons = new List<_Weapon> (GetComponentsInChildren<_Weapon> ());
+		engines = new List<ShipEngine> (GetComponentsInChildren<ShipEngine> ());
+		body = GetComponent<Rigidbody> ();
 	}
 
 	void Update () {
-		CheckInput ();
+		UpdateMovement ();
 		UpdateWeapons ();
 		UpdateCamera ();
 	}
 
-	void CheckInput() {
-		// OMG DAT LINE SO BEAUTIFUL
-		var data = CustomStandaloneInputModule.GetLastPointerEventDataStatic(-1);
-		if (data == null || data.pointerPress == null) {
-			// Musen
-			if (Input.GetMouseButtonDown (0))
-				mousePos = Input.mousePosition;
-		
-			if (Input.GetMouseButton (0)) {
-				mouseDelta = mousePos - Input.mousePosition;
-				mousePos = Input.mousePosition;
+	void UpdateMovement() {
+		float multiplier = throttle.value;
+		float steering = wheel.valueNormalized;
+
+		engines.ForEach (e => {
+			Vector3 euler = e.transform.localEulerAngles;
+			euler.y = Mathf.LerpAngle(e.minDegrees, e.maxDegrees, steering);
+			e.transform.localEulerAngles = euler;
+
+			float waveYPos = WaterController.current.GetWaveYPos(e.transform.position, Time.time);
+			if (e.transform.position.y < waveYPos) {
+				// Propellern måste vara i vattnet!
+				Vector3 force = -e.transform.forward * e.power * multiplier;
+				body.AddForceAtPosition(force, e.transform.position);
 			}
 
-			if (Input.GetMouseButtonUp (0))
-				mouseDelta = Vector3.zero;
+		});
 
-			// Kameran
-			cameraEuler.y += mouseDelta.x;
-			cameraEuler.y %= 360;
-
-			cameraEuler.x += mouseDelta.y;
-			cameraEuler.x = Mathf.Clamp (cameraEuler.x, 5, 85);
-
-			cameraDist += Input.mouseScrollDelta.y;
-			cameraDist = Mathf.Clamp (cameraDist, cameraMinDist, cameraMaxDist);
-		}
+		Vector3 shipEuler = transform.eulerAngles;
+		shipEuler.x = shipEuler.z = 0;
+		transform.eulerAngles = shipEuler;
 	}
 
 	void UpdateCamera() {
+		// Läs av input
+		cameraEuler.y += cameraJoystick.input.x * cameraSpeed;
+		cameraEuler.y %= 360;
+
+		cameraEuler.x -= cameraJoystick.input.y * 0.5f * cameraSpeed;
+		cameraEuler.x = Mathf.Clamp (cameraEuler.x, 1, 85);
+
+		cameraZoom += Input.mouseScrollDelta.y;
+		cameraZoom = Mathf.Clamp (cameraZoom, cameraMinZoom, cameraMaxZoom);
+
+		// Change stuffs
 		Camera.main.transform.eulerAngles = cameraEuler;
-		Camera.main.transform.position = transform.TransformPoint(cameraOffset + Vector3.up * cameraDist * .1f) - Camera.main.transform.forward * cameraDist;
+		Camera.main.transform.position = transform.TransformPoint(cameraOffset + Vector3.up * cameraZoom * .1f) - Camera.main.transform.forward * cameraZoom;
 	}
 
 	void UpdateWeapons () {
@@ -71,6 +87,7 @@ public class ShipController : MonoBehaviour {
 			float dist = pos.y / Mathf.Sin (angle * Mathf.Deg2Rad);
 
 			Vector3 water = pos + Camera.main.transform.forward * dist;
+			water += Camera.main.transform.forward.y (0).normalized * targetExtraDistance;
 
 			// Sätt det som target för alla vapen
 			weapons.ForEach (w => {
@@ -121,8 +138,8 @@ public class ShipController : MonoBehaviour {
 	}
 
 	void OnValidate() {
-		cameraMinDist = Mathf.Max (cameraMinDist, 0);
-		cameraDist = Mathf.Clamp (cameraDist, cameraMinDist, cameraMaxDist);
+		cameraMinZoom = Mathf.Max (cameraMinZoom, 0);
+		cameraZoom = Mathf.Clamp (cameraZoom, cameraMinZoom, cameraMaxZoom);
 	}
 	#endif
 }
